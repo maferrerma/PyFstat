@@ -228,7 +228,7 @@ class MCMCSearch(BaseSearchClass):
 
         os.makedirs(outdir, exist_ok=True)
         self.output_file_header = self.get_output_file_header()
-        logger.info("Set-up MCMC search for model {}".format(self.label))
+        logger.info("Set-up search for model {}".format(self.label))
         if sftfilepattern:
             logger.info("Using data {}".format(self.sftfilepattern))
         else:
@@ -280,6 +280,8 @@ class MCMCSearch(BaseSearchClass):
 
     def _log_input(self):
         logger.info("theta_prior = {}".format(self.theta_prior))
+
+    def _log_sampler_input(self):
         logger.info("nwalkers={}".format(self.nwalkers))
         logger.info("nsteps = {}".format(self.nsteps))
         logger.info("ntemps = {}".format(self.ntemps))
@@ -714,6 +716,7 @@ class MCMCSearch(BaseSearchClass):
 
         """
 
+        self._log_sampler_input()
         self._initiate_search_object()
 
         self.old_data_is_okay_to_use = self._check_old_data_is_okay_to_use()
@@ -826,6 +829,87 @@ class MCMCSearch(BaseSearchClass):
                     logger.warning(
                         "Failed to save walker plots due to Error {}".format(e)
                     )
+
+    def run_bilby(
+        self,
+        sampler="dynesty",
+        sampler_kwargs=None,
+        bilby_priors=None,
+        save_pickle=True,
+        export_samples=True,
+        save_loudest=True,
+        save_bilby_logs=False,
+        save_bilby_progress=False,
+        bilby_log_file=None,
+        bilby_progress_file=None,
+        **run_sampler_kwargs,
+    ):
+        """Run the search with any sampler supported by Bilby.
+
+        This builds a Bilby likelihood from this PyFstat MCMC search and
+        delegates sampling to ``bilby.run_sampler``.
+
+        Parameters
+        ----------
+        sampler: str
+            Name of the Bilby sampler to use, e.g. ``"dynesty"``, ``"emcee"``,
+            ``"ptemcee"``, ``"bilby_mcmc"`` or any other sampler available in
+            the installed Bilby environment.
+        sampler_kwargs: dict
+            Keyword arguments forwarded to ``bilby.run_sampler`` for the chosen
+            sampler.
+        bilby_priors: bilby.core.prior.PriorDict or dict
+            Optional Bilby priors keyed by the sampled Bilby parameter names.
+            When supplied, these replace the priors converted from
+            ``theta_prior`` and allow any prior supported by Bilby. The keys
+            must exactly match the sampled parameter names; repeated PyFstat
+            glitch parameters use indexed names such as ``delta_F0_0`` and
+            ``delta_F0_1``. The PyFstat ``theta_prior`` is still used to
+            identify sampled parameters and initialize the covered frequency
+            band.
+        save_pickle, export_samples, save_loudest: bool
+            Reuse the corresponding PyFstat post-processing steps after Bilby
+            returns posterior samples.
+        save_bilby_logs: bool
+            Save Bilby's logger output to ``bilby_log_file`` or to
+            ``<outdir>/<label>.log``.
+        save_bilby_progress: bool
+            Mirror stdout/stderr during ``bilby.run_sampler`` to
+            ``bilby_progress_file`` or to
+            ``<outdir>/<label>_bilby_progress.log``. This captures sampler
+            progress output such as dynesty iteration updates.
+        bilby_log_file, bilby_progress_file: str
+            Optional explicit output paths for the Bilby log and progress files.
+        **run_sampler_kwargs:
+            Additional keyword arguments forwarded to ``bilby.run_sampler``.
+        """
+        try:
+            from pyfstat.bilby_based_searches import run_bilby_search
+        except ModuleNotFoundError as exc:
+            if exc.name != "bilby":
+                raise
+            raise ModuleNotFoundError(
+                "MCMCSearch.run_bilby() requires the optional 'bilby' "
+                "dependency. Install it with `python -m pip install "
+                "-e '.[bilby]'`, or create/update a conda environment with "
+                "`NO_LALSUITE_FROM_PYPI=1 mamba env create -f "
+                "etc/pyfstat-dev-bilby.yml`."
+            ) from exc
+
+        return run_bilby_search(
+            self,
+            sampler=sampler,
+            sampler_kwargs=sampler_kwargs,
+            bilby_priors=bilby_priors,
+            save_pickle=save_pickle,
+            export_samples=export_samples,
+            save_loudest=save_loudest,
+            save_bilby_logs=save_bilby_logs,
+            save_bilby_progress=save_bilby_progress,
+            bilby_log_file=bilby_log_file,
+            bilby_progress_file=bilby_progress_file,
+            **run_sampler_kwargs,
+        )
 
     def _get_rescale_multiplier_for_key(self, key):
         """Get the rescale multiplier from the transform_dictionary
@@ -1797,7 +1881,7 @@ class MCMCSearch(BaseSearchClass):
         d["samples"] = samples
         d["lnprobs"] = lnprobs
         d["lnlikes"] = lnlikes
-        d["chain"] = self.sampler.chain
+        d["chain"] = self.chain
         d["all_lnlikelihood"] = all_lnlikelihood
 
         if os.path.isfile(self.pickle_path):
