@@ -126,7 +126,8 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
             "normF0-normF1-uniformSky",
         ],
     )
-    def test_fully_coherent_MCMC(self, prior_choice):
+    @pytest.mark.parametrize("sampler", ["pyfstat", "bilby"])
+    def test_fully_coherent_MCMC(self, prior_choice, sampler):
         thetas = {
             "uniformF0-uniformF1-fixedSky": {
                 "F0": {
@@ -210,7 +211,7 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
         }
         theta = thetas[prior_choice]
         self.search = pyfstat.MCMCSearch(
-            label=self.label + "-" + prior_choice,
+            label=self.label + "-" + prior_choice + "-" + sampler,
             outdir=self.outdir,
             theta_prior=theta,
             tref=self.signal_params["tref"],
@@ -221,7 +222,33 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
             log10beta_min=-1,
             BSGL=self.BSGL,
         )
-        self.search.run(plot_walkers=False)
+        if sampler == "pyfstat":
+            self.search.run(plot_walkers=False)
+        else:
+            pytest.importorskip("bilby")
+            nburn, nprod = self.search.nsteps[-2:]
+            self.search.run_bilby(
+                sampler="ptemcee",
+                sampler_kwargs={
+                    "nwalkers": self.search.nwalkers,
+                    "ntemps": self.search.ntemps,
+                    "log10beta_min": self.search.log10beta_min,
+                    "burn_in_fixed_discard": nburn,
+                    "burn_in_nact": 0,
+                    "thin_by_nact": 0,
+                    "nsamples": self.search.nwalkers * nprod,
+                    "mean_logl_frac": np.inf,
+                    "autocorr_tol": 0,
+                    "gradient_tau": np.inf,
+                    "gradient_mean_log_posterior": np.inf,
+                    "Q_tol": np.inf,
+                    "min_tau": 0,
+                    "niterations_per_check": 1,
+                    "resume": False,
+                    "check_point_plot": False,
+                    "verbose": False,
+                },
+            )
         self.search.print_summary()
         self.search.write_prior_table()
         self._check_twoF_predicted()
