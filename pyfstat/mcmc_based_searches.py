@@ -3240,6 +3240,7 @@ class MCMCFollowUpSearch(MCMCSemiCoherentSearch, core.DeprecatedClass):
         lnlikes = self.sampler.loglikelihood[0, :, nburn:].reshape((-1))
         all_lnlikelihood = self.sampler.loglikelihood
         self.samples = samples
+        self.chain = self.sampler.chain
         self.lnprobs = lnprobs
         self.lnlikes = lnlikes
         self.all_lnlikelihood = all_lnlikelihood
