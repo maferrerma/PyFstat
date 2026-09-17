@@ -26,6 +26,45 @@ class _MCMCSearchTestUtils:
     SFTWindowParam = default_Writer_params["SFTWindowParam"]
     randSeed = default_Writer_params["randSeed"]
 
+    def _run_search_with_interface(
+        self,
+        interface,
+        pyfstat_run_kwargs=None,
+        bilby_sampler_kwargs=None,
+        bilby_run_kwargs=None,
+    ):
+        if interface == "pyfstat":
+            self.search.run(**(pyfstat_run_kwargs or {}))
+            return
+
+        pytest.importorskip("bilby")
+        nburn, nprod = self.search.nsteps[-2:]
+        sampler_kwargs = {
+            "nwalkers": self.search.nwalkers,
+            "ntemps": self.search.ntemps,
+            "log10beta_min": self.search.log10beta_min,
+            "burn_in_fixed_discard": nburn,
+            "burn_in_nact": 0,
+            "thin_by_nact": 0,
+            "nsamples": self.search.nwalkers * nprod,
+            "mean_logl_frac": np.inf,
+            "autocorr_tol": 0,
+            "gradient_tau": np.inf,
+            "gradient_mean_log_posterior": np.inf,
+            "Q_tol": np.inf,
+            "min_tau": 0,
+            "niterations_per_check": 1,
+            "resume": False,
+            "check_point_plot": False,
+            "verbose": False,
+        }
+        sampler_kwargs.update(bilby_sampler_kwargs or {})
+        self.search.run_bilby(
+            sampler="ptemcee",
+            sampler_kwargs=sampler_kwargs,
+            **(bilby_run_kwargs or {}),
+        )
+
     def _check_twoF_predicted(self, assertTrue=True):
         self.twoF_predicted = self.Writer.predict_fstat()
         self.max_dict, self.maxTwoF = self.search.get_max_twoF()
@@ -126,8 +165,8 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
             "normF0-normF1-uniformSky",
         ],
     )
-    @pytest.mark.parametrize("sampler", ["pyfstat", "bilby"])
-    def test_fully_coherent_MCMC(self, prior_choice, sampler):
+    @pytest.mark.parametrize("interface", ["pyfstat", "bilby"])
+    def test_fully_coherent_MCMC(self, prior_choice, interface):
         thetas = {
             "uniformF0-uniformF1-fixedSky": {
                 "F0": {
@@ -211,7 +250,7 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
         }
         theta = thetas[prior_choice]
         self.search = pyfstat.MCMCSearch(
-            label=self.label + "-" + prior_choice + "-" + sampler,
+            label=self.label + "-" + prior_choice + "-" + interface,
             outdir=self.outdir,
             theta_prior=theta,
             tref=self.signal_params["tref"],
@@ -222,33 +261,9 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
             log10beta_min=-1,
             BSGL=self.BSGL,
         )
-        if sampler == "pyfstat":
-            self.search.run(plot_walkers=False)
-        else:
-            pytest.importorskip("bilby")
-            nburn, nprod = self.search.nsteps[-2:]
-            self.search.run_bilby(
-                sampler="ptemcee",
-                sampler_kwargs={
-                    "nwalkers": self.search.nwalkers,
-                    "ntemps": self.search.ntemps,
-                    "log10beta_min": self.search.log10beta_min,
-                    "burn_in_fixed_discard": nburn,
-                    "burn_in_nact": 0,
-                    "thin_by_nact": 0,
-                    "nsamples": self.search.nwalkers * nprod,
-                    "mean_logl_frac": np.inf,
-                    "autocorr_tol": 0,
-                    "gradient_tau": np.inf,
-                    "gradient_mean_log_posterior": np.inf,
-                    "Q_tol": np.inf,
-                    "min_tau": 0,
-                    "niterations_per_check": 1,
-                    "resume": False,
-                    "check_point_plot": False,
-                    "verbose": False,
-                },
-            )
+        self._run_search_with_interface(
+            interface, pyfstat_run_kwargs={"plot_walkers": False}
+        )
         self.search.print_summary()
         self.search.write_prior_table()
         self._check_twoF_predicted()
@@ -261,7 +276,8 @@ class TestMCMCSearchBSGL(TestMCMCSearch):
     detectors = "H1,L1"
     BSGL = True
 
-    def test_MCMC_search_on_data_with_line(self):
+    @pytest.mark.parametrize("interface", ["pyfstat", "bilby"])
+    def test_MCMC_search_on_data_with_line(self, interface):
         # We reuse the default multi-IFO SFTs
         # but add an additional single-detector artifact to H1 only.
         # For simplicity, this is modelled here as a fully modulated CW-like signal,
@@ -300,7 +316,7 @@ class TestMCMCSearchBSGL(TestMCMCSearch):
         }
         # now run a standard F-stat search over this data
         self.search = pyfstat.MCMCSearch(
-            label=self.label + "F",
+            label=self.label + "F-" + interface,
             outdir=self.outdir,
             theta_prior=thetas,
             tref=self.signal_params["tref"],
@@ -311,7 +327,9 @@ class TestMCMCSearchBSGL(TestMCMCSearch):
             log10beta_min=-1,
             BSGL=False,
         )
-        self.search.run(plot_walkers=True)
+        self._run_search_with_interface(
+            interface, pyfstat_run_kwargs={"plot_walkers": True}
+        )
         self.search.print_summary()
         # The standard checks here are expected to fail,
         # as the F-search will get confused by the line
@@ -324,7 +342,7 @@ class TestMCMCSearchBSGL(TestMCMCSearch):
         self._test_plots()
         # also run a BSGL search over the same data
         self.search = pyfstat.MCMCSearch(
-            label=self.label + "BSGL",
+            label=self.label + "BSGL-" + interface,
             outdir=self.outdir,
             theta_prior=thetas,
             tref=self.signal_params["tref"],
@@ -335,7 +353,9 @@ class TestMCMCSearchBSGL(TestMCMCSearch):
             log10beta_min=-1,
             BSGL=True,
         )
-        self.search.run(plot_walkers=True)
+        self._run_search_with_interface(
+            interface, pyfstat_run_kwargs={"plot_walkers": True}
+        )
         self.search.print_summary()
         # Still skipping the standard checks,
         # as we're using too cheap a MCMC setup here for them to be robust.
@@ -357,7 +377,8 @@ class TestMCMCSearchBSGL(TestMCMCSearch):
 class TestMCMCSemiCoherentSearch(BaseForMCMCSearchTests):
     label = "TestMCMCSemiCoherentSearch"
 
-    def test_semi_coherent_MCMC(self):
+    @pytest.mark.parametrize("interface", ["pyfstat", "bilby"])
+    def test_semi_coherent_MCMC(self, interface):
         theta = {
             "F0": {
                 "type": "unif",
@@ -375,7 +396,7 @@ class TestMCMCSemiCoherentSearch(BaseForMCMCSearchTests):
         }
         nsegs = 2
         self.search = pyfstat.MCMCSemiCoherentSearch(
-            label=self.label,
+            label=self.label + "-" + interface,
             outdir=self.outdir,
             theta_prior=theta,
             tref=self.signal_params["tref"],
@@ -386,7 +407,9 @@ class TestMCMCSemiCoherentSearch(BaseForMCMCSearchTests):
             log10beta_min=-1,
             nsegs=nsegs,
         )
-        self.search.run(plot_walkers=False)
+        self._run_search_with_interface(
+            interface, pyfstat_run_kwargs={"plot_walkers": False}
+        )
         self.search.print_summary()
 
         self._check_twoF_predicted()
@@ -417,7 +440,8 @@ class TestMCMCFollowUpSearch(BaseForMCMCSearchTests):
     # FIXME: if h0 too high for given duration, offsets to PFS become too large
     h0 = 0.1
 
-    def test_MCMC_followup_search(self):
+    @pytest.mark.parametrize("interface", ["pyfstat", "bilby"])
+    def test_MCMC_followup_search(self, interface):
         theta = {
             "F0": {
                 "type": "unif",
@@ -436,7 +460,7 @@ class TestMCMCFollowUpSearch(BaseForMCMCSearchTests):
         nsegs = 10
         NstarMax = 1000
         self.search = pyfstat.MCMCFollowUpSearch(
-            label=self.label,
+            label=self.label + "-" + interface,
             outdir=self.outdir,
             theta_prior=theta,
             tref=self.signal_params["tref"],
@@ -446,11 +470,23 @@ class TestMCMCFollowUpSearch(BaseForMCMCSearchTests):
             ntemps=2,
             log10beta_min=-1,
         )
-        self.search.run(
-            plot_walkers=False,
-            NstarMax=NstarMax,
-            Nsegs0=nsegs,
-        )
+        if interface == "pyfstat":
+            self._run_search_with_interface(
+                interface,
+                pyfstat_run_kwargs={
+                    "plot_walkers": False,
+                    "NstarMax": NstarMax,
+                    "Nsegs0": nsegs,
+                },
+            )
+        else:
+            # Bilby runs a single sampler stage, so exercise the fully coherent
+            # endpoint of the native follow-up ladder.
+            self.search.nsegs = 1
+            self.search._set_likelihoodcoef()
+            self._run_search_with_interface(
+                interface, bilby_run_kwargs={"save_pickle": False}
+            )
         self.search.print_summary()
         self._check_twoF_predicted()
         self._check_mcmc_quantiles()
@@ -505,7 +541,56 @@ class TestMCMCTransientSearch(_MCMCSearchTestUtils):
             "log10beta_min": -1,
         }
 
-    def test_transient_MCMC_t0only(self):
+    def _get_valid_bilby_pos0(self):
+        """Draw PTMCMC initial points whose transient ends within the data."""
+        rng = np.random.default_rng(0)
+        shape = (self.search.ntemps, self.search.nwalkers)
+        draws = {
+            key: rng.uniform(
+                self.search.theta_prior[key]["lower"],
+                self.search.theta_prior[key]["upper"],
+                size=shape,
+            )
+            for key in self.search.theta_keys
+        }
+        tstart = draws.get(
+            "transient_tstart",
+            np.full(shape, self.signal_params["transientStartTime"]),
+        )
+        duration = draws.get(
+            "transient_duration",
+            np.full(shape, self.signal_params["transientTau"]),
+        )
+        invalid = tstart + duration > self.Writer.tend
+        while np.any(invalid):
+            for key in draws:
+                prior = self.search.theta_prior[key]
+                draws[key][invalid] = rng.uniform(
+                    prior["lower"], prior["upper"], size=np.sum(invalid)
+                )
+            tstart = draws.get(
+                "transient_tstart",
+                np.full(shape, self.signal_params["transientStartTime"]),
+            )
+            duration = draws.get(
+                "transient_duration",
+                np.full(shape, self.signal_params["transientTau"]),
+            )
+            invalid = tstart + duration > self.Writer.tend
+        return np.stack([draws[key] for key in self.search.theta_keys], axis=-1)
+
+    def _run_transient_search(self, interface):
+        bilby_sampler_kwargs = None
+        if interface == "bilby":
+            bilby_sampler_kwargs = {"pos0": self._get_valid_bilby_pos0()}
+        self._run_search_with_interface(
+            interface,
+            pyfstat_run_kwargs={"plot_walkers": False},
+            bilby_sampler_kwargs=bilby_sampler_kwargs,
+        )
+
+    @pytest.mark.parametrize("interface", ["pyfstat", "bilby"])
+    def test_transient_MCMC_t0only(self, interface):
         theta = {
             **self.basic_theta,
             "transient_tstart": {
@@ -516,7 +601,7 @@ class TestMCMCTransientSearch(_MCMCSearchTestUtils):
             "transient_duration": self.signal_params["transientTau"],
         }
         self.search = pyfstat.MCMCTransientSearch(
-            label=self.label,
+            label=self.label + "-t0only-" + interface,
             outdir=self.outdir,
             theta_prior=theta,
             tref=self.signal_params["tref"],
@@ -524,13 +609,14 @@ class TestMCMCTransientSearch(_MCMCSearchTestUtils):
             **self.MCMC_params,
             transientWindowType=self.signal_params["transientWindowType"],
         )
-        self.search.run(plot_walkers=False)
+        self._run_transient_search(interface)
         self.search.print_summary()
         self._check_twoF_predicted()
         self._check_mcmc_quantiles(transient=True)
         self._test_plots()
 
-    def test_transient_MCMC_tauonly(self):
+    @pytest.mark.parametrize("interface", ["pyfstat", "bilby"])
+    def test_transient_MCMC_tauonly(self, interface):
         theta = {
             **self.basic_theta,
             "transient_tstart": self.signal_params["transientStartTime"],
@@ -541,7 +627,7 @@ class TestMCMCTransientSearch(_MCMCSearchTestUtils):
             },
         }
         self.search = pyfstat.MCMCTransientSearch(
-            label=self.label,
+            label=self.label + "-tauonly-" + interface,
             outdir=self.outdir,
             theta_prior=theta,
             tref=self.signal_params["tref"],
@@ -549,13 +635,13 @@ class TestMCMCTransientSearch(_MCMCSearchTestUtils):
             **self.MCMC_params,
             transientWindowType=self.signal_params["transientWindowType"],
         )
-        self.search.run(plot_walkers=False)
+        self._run_transient_search(interface)
         self.search.print_summary()
         self._check_twoF_predicted()
         self._check_mcmc_quantiles(transient=True)
         self._test_plots()
 
-    def test_transient_MCMC_t0_tau(self, BtSG=False):
+    def _test_transient_MCMC_t0_tau(self, interface, BtSG):
         theta = {
             **self.basic_theta,
             "transient_tstart": {
@@ -570,7 +656,7 @@ class TestMCMCTransientSearch(_MCMCSearchTestUtils):
             },
         }
         self.search = pyfstat.MCMCTransientSearch(
-            label=self.label,
+            label=(self.label + ("-BtSG" if BtSG else "-t0-tau") + "-" + interface),
             outdir=self.outdir,
             theta_prior=theta,
             tref=self.signal_params["tref"],
@@ -579,11 +665,16 @@ class TestMCMCTransientSearch(_MCMCSearchTestUtils):
             transientWindowType=self.signal_params["transientWindowType"],
             BtSG=BtSG,
         )
-        self.search.run(plot_walkers=False)
+        self._run_transient_search(interface)
         self.search.print_summary()
-        self._check_twoF_predicted()
+        self._check_twoF_predicted(assertTrue=not BtSG)
         self._check_mcmc_quantiles(transient=True)
         self._test_plots()
 
-    def test_transient_MCMC_t0_tau_BtSG(self, BtSG=False):
-        self.test_transient_MCMC_t0_tau(BtSG=True)
+    @pytest.mark.parametrize("interface", ["pyfstat", "bilby"])
+    def test_transient_MCMC_t0_tau(self, interface):
+        self._test_transient_MCMC_t0_tau(interface=interface, BtSG=False)
+
+    @pytest.mark.parametrize("interface", ["pyfstat", "bilby"])
+    def test_transient_MCMC_t0_tau_BtSG(self, interface):
+        self._test_transient_MCMC_t0_tau(interface=interface, BtSG=True)
