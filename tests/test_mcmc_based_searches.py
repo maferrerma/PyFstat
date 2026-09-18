@@ -249,13 +249,16 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
             },
         }
         theta = thetas[prior_choice]
+        nsteps = (
+            [50, 50] if prior_choice == "lognormF0-halfnormF1-fixedSky" else [20, 20]
+        )
         self.search = pyfstat.MCMCSearch(
             label=self.label + "-" + prior_choice + "-" + interface,
             outdir=self.outdir,
             theta_prior=theta,
             tref=self.signal_params["tref"],
             sftfilepattern=self.Writer.sftfilepath,
-            nsteps=[20, 20],
+            nsteps=nsteps,
             nwalkers=20,
             ntemps=2,
             log10beta_min=-1,
