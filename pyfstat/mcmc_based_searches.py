@@ -77,6 +77,12 @@ class MCMCSearch(BaseSearchClass):
 
     Evaluates the coherent F-statistic across a parameter space region
     corresponding to an isolated/binary-modulated CW signal.
+
+    The standard implementation takes its sampler configuration during
+    initialisation and :meth:`run` uses the ``ptemcee`` sampler. Alternatively,
+    the experimental :meth:`run_bilby` interface takes the sampler name and
+    sampler-specific arguments when it is called, providing access to samplers
+    supported by `Bilby <https://bilby-dev.github.io/bilby/>`_.
     """
 
     transform_dictionary = {}
@@ -681,7 +687,10 @@ class MCMCSearch(BaseSearchClass):
         walker_plot_args=None,
         window=50,
     ):
-        """Run the MCMC simulation
+        """Run the MCMC simulation using the standard ``ptemcee`` sampler.
+
+        For other samplers and sampler-specific options, see the experimental
+        :meth:`run_bilby` interface.
 
         Parameters
         ----------

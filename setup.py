@@ -50,6 +50,7 @@ extras_require = {
         "pre-commit",
     ],
     "docs": [
+        "bilby",
         "sphinx==9.1.0",
         "sphinx_autodoc_typehints==3.9.10",
         "sphinx_gallery==0.20.0",
