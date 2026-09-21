@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pytest
 from commons_for_tests import (
@@ -151,6 +153,17 @@ class BaseForMCMCSearchTests(_MCMCSearchTestUtils):
     pass
 
 
+def test_bilby_likelihood_reuses_cached_periodograms():
+    pytest.importorskip("bilby")
+    from pyfstat.bilby_based_searches import PyFstatBilbyLikelihood
+
+    likelihood = object.__new__(PyFstatBilbyLikelihood)
+    cached_periodograms = {0: np.array([[1.0, 2.0]])}
+    likelihood._sft_periodograms_by_detector = cached_periodograms
+
+    assert likelihood._get_running_median_periodograms() is cached_periodograms
+
+
 class TestMCMCSearch(BaseForMCMCSearchTests):
     label = "TestMCMCSearch"
     BSGL = False
@@ -162,6 +175,7 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
             "log10uniformF0-uniformF1-fixedSky",
             "normF0-normF1-fixedSky",
             "lognormF0-halfnormF1-fixedSky",
+            "normF0-neghalfnormF1-fixedSky",
             "normF0-normF1-uniformSky",
         ],
     )
@@ -231,6 +245,17 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
                 "Alpha": self.signal_params["Alpha"],
                 "Delta": self.signal_params["Delta"],
             },
+            "normF0-neghalfnormF1-fixedSky": {
+                "F0": {"type": "norm", "loc": self.signal_params["F0"], "scale": 1e-6},
+                "F1": {
+                    "type": "neghalfnorm",
+                    "loc": self.signal_params["F1"] + 1e-10,
+                    "scale": 1e-10,
+                },
+                "F2": self.signal_params["F2"],
+                "Alpha": self.signal_params["Alpha"],
+                "Delta": self.signal_params["Delta"],
+            },
             "normF0-normF1-uniformSky": {
                 # norm in sky is too dangerous, can easily jump out of range
                 "F0": {"type": "norm", "loc": self.signal_params["F0"], "scale": 1e-6},
@@ -250,7 +275,13 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
         }
         theta = thetas[prior_choice]
         nsteps = (
-            [50, 50] if prior_choice == "lognormF0-halfnormF1-fixedSky" else [20, 20]
+            [50, 50]
+            if prior_choice
+            in {
+                "lognormF0-halfnormF1-fixedSky",
+                "normF0-neghalfnormF1-fixedSky",
+            }
+            else [20, 20]
         )
         self.search = pyfstat.MCMCSearch(
             label=self.label + "-" + prior_choice + "-" + interface,
@@ -264,9 +295,37 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
             log10beta_min=-1,
             BSGL=self.BSGL,
         )
-        self._run_search_with_interface(
-            interface, pyfstat_run_kwargs={"plot_walkers": False}
+        bilby_run_kwargs = None
+        test_direct_bilby_options = (
+            interface == "bilby"
+            and not self.BSGL
+            and prior_choice == "uniformF0-uniformF1-fixedSky"
         )
+        if test_direct_bilby_options:
+            bilby = pytest.importorskip("bilby")
+
+            bilby_priors = bilby.core.prior.PriorDict()
+            bilby_priors["F0"] = bilby.core.prior.Uniform(
+                theta["F0"]["lower"], theta["F0"]["upper"], name="F0"
+            )
+            bilby_priors["F1"] = bilby.core.prior.Uniform(
+                theta["F1"]["lower"], theta["F1"]["upper"], name="F1"
+            )
+            bilby_run_kwargs = {
+                "bilby_priors": bilby_priors,
+                "save_bilby_logs": True,
+                "save_bilby_progress": True,
+            }
+        self._run_search_with_interface(
+            interface,
+            pyfstat_run_kwargs={"plot_walkers": False},
+            bilby_run_kwargs=bilby_run_kwargs,
+        )
+        if test_direct_bilby_options:
+            assert os.path.isfile(os.path.join(self.outdir, f"{self.search.label}.log"))
+            assert os.path.isfile(
+                os.path.join(self.outdir, f"{self.search.label}_bilby_progress.log")
+            )
         self.search.print_summary()
         self.search.write_prior_table()
         self._check_twoF_predicted()
