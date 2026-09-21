@@ -1480,7 +1480,7 @@ class MCMCSearch(BaseSearchClass):
         )
 
     def _generic_lnprior(self, **kwargs):
-        """Return a lambda function of the pdf
+        """Return a lambda function of the log-pdf.
 
         Parameters
         ----------
@@ -1553,7 +1553,7 @@ class MCMCSearch(BaseSearchClass):
         elif kwargs["type"] == "lognorm":
             # as of scipy 1.4.1 and numpy 1.18.1 the following parametrisation
             # should be consistent with np.random.lognormal in _generate_rv()
-            return lambda x: lognorm.pdf(
+            return lambda x: lognorm.logpdf(
                 x, s=kwargs["scale"], scale=np.exp(kwargs["loc"])
             )
         else:

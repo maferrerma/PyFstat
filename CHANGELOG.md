@@ -2,8 +2,9 @@
 
  - Dropped python 3.9 support.
  - Full support for `F3` and higher spin-downs through `signal_parameters` dictionaries in Writer and derived classes.
- - Flexible parameters dictionary suppport also in search classes.
+ - Flexible parameters dictionary support also in search classes.
  - Improved error checking on MCMC prior bounds.
+ - Fixed MCMC log-normal priors being evaluated as densities instead of log-densities.
  - Fixed numerical overflow problems in `plot_spectrogram()`.
  - Fixed `MCMCGlitchSearch` cumulative 2F plot to include `F1` glitch steps.
  - Migrated past of the test suite to pytest fixtures.

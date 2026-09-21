@@ -164,6 +164,14 @@ def test_bilby_likelihood_reuses_cached_periodograms():
     assert likelihood._get_running_median_periodograms() is cached_periodograms
 
 
+def test_lognorm_lnprior_returns_log_density_and_rejects_negative_values():
+    search = object.__new__(pyfstat.MCMCSearch)
+    lnprior = search._generic_lnprior(type="lognorm", loc=np.log(30.0), scale=1e-6)
+
+    assert np.isfinite(lnprior(30.0))
+    assert np.isneginf(lnprior(-30.0))
+
+
 class TestMCMCSearch(BaseForMCMCSearchTests):
     label = "TestMCMCSearch"
     BSGL = False
@@ -283,6 +291,14 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
             }
             else [20, 20]
         )
+        cover_frequency_kwargs = (
+            {
+                "minCoverFreq": self.signal_params["F0"] - 0.0035,
+                "maxCoverFreq": self.signal_params["F0"] + 0.0035,
+            }
+            if prior_choice == "lognormF0-halfnormF1-fixedSky"
+            else {}
+        )
         self.search = pyfstat.MCMCSearch(
             label=self.label + "-" + prior_choice + "-" + interface,
             outdir=self.outdir,
@@ -294,6 +310,7 @@ class TestMCMCSearch(BaseForMCMCSearchTests):
             ntemps=2,
             log10beta_min=-1,
             BSGL=self.BSGL,
+            **cover_frequency_kwargs,
         )
         bilby_run_kwargs = None
         test_direct_bilby_options = (
