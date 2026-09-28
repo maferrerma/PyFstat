@@ -523,12 +523,17 @@ def run_bilby_search(
                 )
         _store_bilby_result(pyfstat_search, result)
 
+        pyfstat_search.bilby_pickle_path = os.path.join(
+            pyfstat_search.outdir,
+            f"{pyfstat_search.label}_bilby_saved_data.p",
+        )
         if save_pickle:
             pyfstat_search._pickle_data(
                 pyfstat_search.samples,
                 pyfstat_search.lnprobs,
                 pyfstat_search.lnlikes,
                 pyfstat_search.all_lnlikelihood,
+                pickle_path=pyfstat_search.bilby_pickle_path,
             )
         if export_samples:
             pyfstat_search.export_samples_to_disk()

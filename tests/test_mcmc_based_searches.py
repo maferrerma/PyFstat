@@ -210,6 +210,68 @@ def test_bilby_absolute_likelihood_rejects_data_without_file_backed_sfts():
         )
 
 
+def test_run_bilby_search_uses_separate_pickle_path(monkeypatch, tmp_path):
+    bilby = pytest.importorskip("bilby")
+    pandas = pytest.importorskip("pandas")
+    from pyfstat.bilby_based_searches import run_bilby_search
+
+    pickle_call = {}
+    native_pickle_path = tmp_path / "test_saved_data.p"
+    pyfstat_search = SimpleNamespace(
+        theta_keys=["F0"],
+        theta_prior={"F0": {"type": "unif", "lower": 29.9, "upper": 30.1}},
+        sftfilepattern="unused.sft",
+        outdir=str(tmp_path),
+        label="test",
+        ndim=1,
+        pickle_path=str(native_pickle_path),
+    )
+    pyfstat_search._initiate_search_object = lambda: setattr(
+        pyfstat_search, "search", object()
+    )
+    pyfstat_search._logl = lambda sample, search: sample[0]
+    pyfstat_search._pickle_data = lambda *args, **kwargs: pickle_call.update(kwargs)
+    result = SimpleNamespace(
+        posterior=pandas.DataFrame(
+            {"F0": [30.0], "log_prior": [0.0], "log_likelihood": [0.0]}
+        )
+    )
+    monkeypatch.setattr(bilby, "run_sampler", lambda **kwargs: result)
+
+    run_bilby_search(
+        pyfstat_search,
+        save_pickle=True,
+        export_samples=False,
+        save_loudest=False,
+    )
+
+    expected_path = tmp_path / "test_bilby_saved_data.p"
+    assert pyfstat_search.bilby_pickle_path == str(expected_path)
+    assert pickle_call["pickle_path"] == str(expected_path)
+    assert pyfstat_search.pickle_path == str(native_pickle_path)
+
+
+def test_pickle_data_can_write_to_separate_path(tmp_path):
+    search = object.__new__(pyfstat.MCMCSearch)
+    search.pickle_path = str(tmp_path / "native_saved_data.p")
+    search.chain = np.zeros((1, 1, 1, 1))
+    search._get_data_dictionary_to_save = lambda: {}
+    bilby_pickle_path = tmp_path / "bilby_saved_data.p"
+    samples = np.zeros((1, 1))
+    likelihoods = np.zeros(1)
+
+    search._pickle_data(
+        samples,
+        likelihoods,
+        likelihoods,
+        likelihoods.reshape((1, 1, 1)),
+        pickle_path=str(bilby_pickle_path),
+    )
+
+    assert bilby_pickle_path.is_file()
+    assert not os.path.isfile(search.pickle_path)
+
+
 @pytest.mark.parametrize(
     "assume_sqrt_sx, expected_psds",
     [(2.0, {"H1": 4.0, "L1": 4.0}), ("2,3", {"H1": 4.0, "L1": 9.0})],

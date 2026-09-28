@@ -885,7 +885,9 @@ class MCMCSearch(BaseSearchClass):
             where the SFT amplitudes cannot be reloaded from a file.
         save_pickle, export_samples, save_loudest: bool
             Reuse the corresponding PyFstat post-processing steps after Bilby
-            returns posterior samples.
+            returns posterior samples. Bilby samples are pickled separately at
+            ``<outdir>/<label>_bilby_saved_data.p`` so that a native run cannot
+            mistake them for a compatible ``ptemcee`` cache.
         save_bilby_logs: bool
             Save Bilby's logger output to ``bilby_log_file`` or to
             ``<outdir>/<label>.log``.
@@ -1893,7 +1895,15 @@ class MCMCSearch(BaseSearchClass):
         )
         return d
 
-    def _pickle_data(self, samples, lnprobs, lnlikes, all_lnlikelihood):
+    def _pickle_data(
+        self,
+        samples,
+        lnprobs,
+        lnlikes,
+        all_lnlikelihood,
+        pickle_path=None,
+    ):
+        pickle_path = self.pickle_path if pickle_path is None else pickle_path
         d = self._get_data_dictionary_to_save()
         d["samples"] = samples
         d["lnprobs"] = lnprobs
@@ -1901,14 +1911,12 @@ class MCMCSearch(BaseSearchClass):
         d["chain"] = self.chain
         d["all_lnlikelihood"] = all_lnlikelihood
 
-        if os.path.isfile(self.pickle_path):
+        if os.path.isfile(pickle_path):
             logger.info(
-                "Saving backup of {} as {}.old".format(
-                    self.pickle_path, self.pickle_path
-                )
+                "Saving backup of {} as {}.old".format(pickle_path, pickle_path)
             )
-            os.rename(self.pickle_path, self.pickle_path + ".old")
-        with open(self.pickle_path, "wb") as File:
+            os.rename(pickle_path, pickle_path + ".old")
+        with open(pickle_path, "wb") as File:
             pickle.dump(d, File)
 
     def get_saved_data_dictionary(self):
