@@ -166,6 +166,51 @@ def test_bilby_likelihood_reuses_cached_periodograms():
 
 
 @pytest.mark.parametrize(
+    "sftfilepattern, include_noise_log_likelihood, expected_warning",
+    [
+        (None, None, "No file-backed SFT amplitudes are available"),
+        ("*.sft", False, "The absolute noise likelihood was disabled"),
+    ],
+)
+def test_bilby_likelihood_warns_when_using_ratio(
+    monkeypatch,
+    caplog,
+    sftfilepattern,
+    include_noise_log_likelihood,
+    expected_warning,
+):
+    pytest.importorskip("bilby")
+    from pyfstat.bilby_based_searches import PyFstatBilbyLikelihood
+
+    pyfstat_search = SimpleNamespace(theta_keys=["F0"], sftfilepattern=sftfilepattern)
+    likelihood = PyFstatBilbyLikelihood(
+        pyfstat_search,
+        include_noise_log_likelihood=include_noise_log_likelihood,
+    )
+    monkeypatch.setattr(
+        likelihood,
+        "_compute_noise_log_likelihood",
+        lambda: pytest.fail("Noise likelihood should not be computed"),
+    )
+
+    assert likelihood.include_noise_log_likelihood is False
+    assert likelihood.noise_log_likelihood() == 0.0
+    assert expected_warning in caplog.text
+
+
+def test_bilby_absolute_likelihood_rejects_data_without_file_backed_sfts():
+    pytest.importorskip("bilby")
+    from pyfstat.bilby_based_searches import PyFstatBilbyLikelihood
+
+    pyfstat_search = SimpleNamespace(theta_keys=["F0"], sftfilepattern=None)
+    with pytest.raises(ValueError, match="without file-backed SFT amplitudes"):
+        PyFstatBilbyLikelihood(
+            pyfstat_search,
+            include_noise_log_likelihood=True,
+        )
+
+
+@pytest.mark.parametrize(
     "assume_sqrt_sx, expected_psds",
     [(2.0, {"H1": 4.0, "L1": 4.0}), ("2,3", {"H1": 4.0, "L1": 9.0})],
 )

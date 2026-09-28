@@ -844,6 +844,7 @@ class MCMCSearch(BaseSearchClass):
         sampler="dynesty",
         sampler_kwargs=None,
         bilby_priors=None,
+        include_noise_log_likelihood=None,
         save_pickle=True,
         export_samples=True,
         save_loudest=True,
@@ -876,6 +877,12 @@ class MCMCSearch(BaseSearchClass):
             ``delta_F0_1``. The PyFstat ``theta_prior`` is still used to
             identify sampled parameters and initialize the covered frequency
             band.
+        include_noise_log_likelihood: bool or None
+            If true, add the absolute Gaussian noise likelihood computed from
+            file-backed SFTs. If false, use the likelihood ratio with a zero
+            noise baseline. The default uses the absolute likelihood for
+            file-backed SFTs and the likelihood ratio for on-the-fly data,
+            where the SFT amplitudes cannot be reloaded from a file.
         save_pickle, export_samples, save_loudest: bool
             Reuse the corresponding PyFstat post-processing steps after Bilby
             returns posterior samples.
@@ -910,6 +917,7 @@ class MCMCSearch(BaseSearchClass):
             sampler=sampler,
             sampler_kwargs=sampler_kwargs,
             bilby_priors=bilby_priors,
+            include_noise_log_likelihood=include_noise_log_likelihood,
             save_pickle=save_pickle,
             export_samples=export_samples,
             save_loudest=save_loudest,

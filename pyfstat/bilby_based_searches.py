@@ -23,14 +23,41 @@ logger = logging.getLogger(__name__)
 class PyFstatBilbyLikelihood(bilby.Likelihood):
     """Bilby likelihood wrapper for a PyFstat MCMC search.
 
-    The parameter-dependent part is the existing PyFstat MCMC likelihood.  If
+    The parameter-dependent part is the existing PyFstat MCMC likelihood. If
     ``include_noise_log_likelihood`` is true, the cached data-only Gaussian
-    noise likelihood is subtracted following the standalone Bilby pipeline.
+    noise likelihood is added following the standalone Bilby pipeline. If it
+    is false, the noise likelihood is defined as zero and Bilby samples the
+    likelihood ratio directly. The default selects the absolute likelihood for
+    file-backed SFTs and the likelihood ratio for on-the-fly data.
     """
 
-    def __init__(self, pyfstat_search, include_noise_log_likelihood=True):
+    def __init__(self, pyfstat_search, include_noise_log_likelihood=None):
         self.pyfstat_search = pyfstat_search
+        has_no_file_backed_sfts = pyfstat_search.sftfilepattern is None
+        if include_noise_log_likelihood is None:
+            include_noise_log_likelihood = not has_no_file_backed_sfts
+        elif include_noise_log_likelihood and has_no_file_backed_sfts:
+            raise ValueError(
+                "The absolute noise likelihood cannot be computed for "
+                "data without file-backed SFT amplitudes. Set "
+                "include_noise_log_likelihood=False to use the likelihood "
+                "ratio."
+            )
         self.include_noise_log_likelihood = include_noise_log_likelihood
+        if not include_noise_log_likelihood:
+            reason = (
+                "No file-backed SFT amplitudes are available, so the absolute "
+                "noise likelihood cannot be computed."
+                if has_no_file_backed_sfts
+                else "The absolute noise likelihood was disabled."
+            )
+            logger.warning(
+                "%s Using the likelihood ratio with a zero "
+                "noise-log-likelihood baseline. Bilby's log_evidence "
+                "therefore represents the signal-versus-noise log Bayes "
+                "factor, not an absolute signal evidence.",
+                reason,
+            )
         self.bilby_parameter_names = get_bilby_parameter_names(
             pyfstat_search.theta_keys
         )
@@ -55,6 +82,8 @@ class PyFstatBilbyLikelihood(bilby.Likelihood):
         return logl
 
     def noise_log_likelihood(self):
+        if not self.include_noise_log_likelihood:
+            return 0.0
         if self._cached_noise_log_likelihood is None:
             self._cached_noise_log_likelihood = self._compute_noise_log_likelihood()
         return self._cached_noise_log_likelihood
@@ -448,6 +477,7 @@ def run_bilby_search(
     sampler="dynesty",
     sampler_kwargs=None,
     bilby_priors=None,
+    include_noise_log_likelihood=None,
     save_pickle=True,
     export_samples=True,
     save_loudest=True,
@@ -465,7 +495,10 @@ def run_bilby_search(
             pyfstat_search,
             bilby_priors=bilby_priors,
         )
-        likelihood = PyFstatBilbyLikelihood(pyfstat_search)
+        likelihood = PyFstatBilbyLikelihood(
+            pyfstat_search,
+            include_noise_log_likelihood=include_noise_log_likelihood,
+        )
         sampler_kwargs = sampler_kwargs or {}
         kwargs = {**run_sampler_kwargs, **sampler_kwargs}
         if save_bilby_logs and bilby_log_file is None:
