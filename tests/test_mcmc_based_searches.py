@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -162,6 +163,56 @@ def test_bilby_likelihood_reuses_cached_periodograms():
     likelihood._sft_periodograms_by_detector = cached_periodograms
 
     assert likelihood._get_running_median_periodograms() is cached_periodograms
+
+
+@pytest.mark.parametrize(
+    "assume_sqrt_sx, expected_psds",
+    [(2.0, {"H1": 4.0, "L1": 4.0}), ("2,3", {"H1": 4.0, "L1": 9.0})],
+)
+def test_bilby_noise_likelihood_uses_assumed_psd(
+    monkeypatch, assume_sqrt_sx, expected_psds
+):
+    pytest.importorskip("bilby")
+    from pyfstat.bilby_based_searches import PyFstatBilbyLikelihood
+
+    data = {
+        "H1": np.array([[1.0 + 0.0j], [2.0 + 0.0j]]),
+        "L1": np.array([[3.0 + 0.0j], [4.0 + 0.0j]]),
+    }
+    search = SimpleNamespace(
+        minCoverFreq=10.0,
+        maxCoverFreq=11.0,
+        Tsft=2.0,
+        assumeSqrtSX=assume_sqrt_sx,
+        detector_names=np.array(["H1", "L1"]),
+        numDetectors=2,
+    )
+    pyfstat_search = SimpleNamespace(
+        search=search,
+        minStartTime=None,
+        maxStartTime=None,
+        sftfilepattern="unused",
+    )
+    likelihood = object.__new__(PyFstatBilbyLikelihood)
+    likelihood.pyfstat_search = pyfstat_search
+    monkeypatch.setattr(
+        pyfstat.utils.sft,
+        "get_sft_as_arrays",
+        lambda *args, **kwargs: (None, None, data),
+    )
+    monkeypatch.setattr(
+        likelihood,
+        "_get_running_median_periodograms",
+        lambda: pytest.fail("Running-median PSD should not be computed"),
+    )
+
+    expected = 0.0
+    for detector, values in data.items():
+        psd = expected_psds[detector]
+        power = np.abs(values) ** 2
+        expected -= np.sum(power / psd + np.log(np.pi * psd))
+
+    assert likelihood._compute_noise_log_likelihood() == pytest.approx(expected)
 
 
 def test_lognorm_lnprior_returns_log_density_and_rejects_negative_values():

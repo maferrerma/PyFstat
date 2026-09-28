@@ -6,6 +6,8 @@
  - Improved error checking on MCMC prior bounds.
  - Fixed MCMC log-normal priors being evaluated as densities instead of log-densities.
  - Fixed numerical overflow problems in `plot_spectrogram()`.
+ - Fixed Bilby's absolute noise-likelihood normalization to respect
+   `assumeSqrtSX` when configured.
  - Fixed `MCMCGlitchSearch` cumulative 2F plot to include `F1` glitch steps.
  - Migrated past of the test suite to pytest fixtures.
  - Updated documentation build and other github integrations.

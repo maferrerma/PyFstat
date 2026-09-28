@@ -62,10 +62,12 @@ class PyFstatBilbyLikelihood(bilby.Likelihood):
     def _compute_noise_log_likelihood(self):
         """Compute the data-only likelihood for complex positive-frequency SFTs.
 
+        If ``assumeSqrtSX`` is set, use its stationary one-sided PSD so that
+        this normalization matches the F-statistic's noise model. Otherwise,
         ``PeriodoToRngmed`` estimates the expected SFT-bin power
-        ``Q = E[|X|^2] = Tsft * S / 2``.  Convert that estimate to the
-        one-sided PSD ``S`` before evaluating the normalized complex-Gaussian
-        likelihood for every detector, SFT, and frequency bin.
+        ``Q = E[|X|^2] = Tsft * S / 2``, which is converted to the one-sided
+        PSD ``S``. Then evaluate the normalized complex-Gaussian likelihood
+        for every detector, SFT, and frequency bin.
         """
         search = self.pyfstat_search.search
         constraints = _get_sft_constraints(
@@ -78,14 +80,20 @@ class PyFstatBilbyLikelihood(bilby.Likelihood):
             fMax=search.maxCoverFreq,
             constraints=constraints,
         )
-        periodograms = self._get_running_median_periodograms()
+        assumed_psds = _get_assumed_psds_by_detector(search)
+        periodograms = (
+            self._get_running_median_periodograms() if assumed_psds is None else None
+        )
         logl = 0.0
 
         for det_idx, det_name in enumerate(data):
             power = np.abs(data[det_name]) ** 2
-            psd = 2.0 * periodograms[det_idx].T / search.Tsft
+            if assumed_psds is None:
+                psd = 2.0 * periodograms[det_idx].T / search.Tsft
+                psd = _match_frequency_bins(psd, power)
+            else:
+                psd = assumed_psds[det_name]
             psd = np.maximum(psd, np.finfo(float).tiny)
-            psd = _match_frequency_bins(psd, power)
 
             quadratic = 2.0 * power / (search.Tsft * psd)
             log_normalization = np.log(np.pi * search.Tsft * psd / 2.0)
@@ -131,6 +139,22 @@ def _get_sft_constraints(minStartTime=None, maxStartTime=None):
     if maxStartTime is not None:
         constraints.maxStartTime = lal.LIGOTimeGPS(maxStartTime)
     return constraints
+
+
+def _get_assumed_psds_by_detector(search):
+    if search.assumeSqrtSX is None:
+        return None
+
+    sqrt_sx = np.asarray(utils.parse_list_of_numbers(search.assumeSqrtSX))
+    if sqrt_sx.size == 1:
+        sqrt_sx = np.repeat(sqrt_sx, search.numDetectors)
+    elif sqrt_sx.size != search.numDetectors:
+        raise ValueError(
+            "assumeSqrtSX must contain either one value or one value per "
+            f"detector ({sqrt_sx.size}!={search.numDetectors})."
+        )
+
+    return dict(zip(search.detector_names, sqrt_sx**2))
 
 
 def _get_wing_fmin(search, wing_bins=50):
