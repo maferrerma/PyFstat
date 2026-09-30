@@ -714,8 +714,7 @@ class TestMCMCFollowUpSearch(BaseForMCMCSearchTests):
     # FIXME: if h0 too high for given duration, offsets to PFS become too large
     h0 = 0.1
 
-    @pytest.mark.parametrize("interface", ["pyfstat", "bilby"])
-    def test_MCMC_followup_search(self, interface):
+    def test_MCMC_followup_search(self):
         theta = {
             "F0": {
                 "type": "unif",
@@ -734,7 +733,7 @@ class TestMCMCFollowUpSearch(BaseForMCMCSearchTests):
         nsegs = 10
         NstarMax = 1000
         self.search = pyfstat.MCMCFollowUpSearch(
-            label=self.label + "-" + interface,
+            label=self.label,
             outdir=self.outdir,
             theta_prior=theta,
             tref=self.signal_params["tref"],
@@ -744,27 +743,22 @@ class TestMCMCFollowUpSearch(BaseForMCMCSearchTests):
             ntemps=2,
             log10beta_min=-1,
         )
-        if interface == "pyfstat":
-            self._run_search_with_interface(
-                interface,
-                pyfstat_run_kwargs={
-                    "plot_walkers": False,
-                    "NstarMax": NstarMax,
-                    "Nsegs0": nsegs,
-                },
-            )
-        else:
-            # Bilby runs a single sampler stage, so exercise the fully coherent
-            # endpoint of the native follow-up ladder.
-            self.search.nsegs = 1
-            self.search._set_likelihoodcoef()
-            self._run_search_with_interface(
-                interface, bilby_run_kwargs={"save_pickle": False}
-            )
+        self.search.run(
+            plot_walkers=False,
+            NstarMax=NstarMax,
+            Nsegs0=nsegs,
+        )
         self.search.print_summary()
         self._check_twoF_predicted()
         self._check_mcmc_quantiles()
         self._test_plots()
+
+
+def test_mcmc_followup_search_rejects_bilby_interface():
+    search = object.__new__(pyfstat.MCMCFollowUpSearch)
+
+    with pytest.raises(NotImplementedError, match="multiple sampler stages"):
+        search.run_bilby()
 
 
 @pytest.mark.flaky(max_runs=3, min_passes=1, rerun_filter=is_flaky)

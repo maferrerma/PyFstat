@@ -8,9 +8,13 @@
  - Fixed numerical overflow problems in `plot_spectrogram()`.
  - Fixed Bilby's absolute noise-likelihood normalization to respect
    `assumeSqrtSX` when configured.
+ - Prevented invalid Gaussian absolute-likelihood normalization in Bilby-backed
+   BSGL searches; these now use the composite Bayes factor directly.
  - Enabled Bilby searches with on-the-fly data by automatically using the
    likelihood-ratio convention when no file-backed SFT amplitudes are available.
  - Separated Bilby result pickles from native MCMC cache files.
+ - Made `MCMCFollowUpSearch.run_bilby()` fail explicitly instead of attempting
+   an invalid single-stage run for a hierarchical follow-up.
  - Fixed `MCMCGlitchSearch` cumulative 2F plot to include `F1` glitch steps.
  - Migrated past of the test suite to pytest fixtures.
  - Updated documentation build and other github integrations.

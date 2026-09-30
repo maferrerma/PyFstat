@@ -3050,6 +3050,10 @@ class MCMCFollowUpSearch(MCMCSemiCoherentSearch, core.DeprecatedClass):
     to then zoom-in said region using a finer "effective resolution" by increasing the coherence time.
     See Ashton & Prix (PRD 97, 103020, 2018): https://arxiv.org/abs/1802.05450
 
+    Bilby-backed sampling is not supported for this staged search. Use
+    :meth:`run` for hierarchical follow-ups, or use
+    :class:`MCMCSemiCoherentSearch` for a single fixed-coherence Bilby run.
+
     See MCMCSemiCoherentSearch for a list of additional parameters, here we list only the additional
     init parameters of this class.
     """
@@ -3134,6 +3138,16 @@ class MCMCFollowUpSearch(MCMCSemiCoherentSearch, core.DeprecatedClass):
             self._set_likelihoodcoef()
         else:
             logger.info("Value `nsegs` not yet provided")
+
+    def run_bilby(self, *args, **kwargs):
+        """Raise an error because staged follow-ups are not yet supported via Bilby."""
+        raise NotImplementedError(
+            "MCMCFollowUpSearch.run_bilby() is not supported because a "
+            "follow-up consists of multiple sampler stages with changing "
+            "coherence times. Use run() for a hierarchical follow-up, or "
+            "MCMCSemiCoherentSearch.run_bilby() for a single fixed-nsegs "
+            "Bilby search."
+        )
 
     def _get_data_dictionary_to_save(self):
         d = dict(
