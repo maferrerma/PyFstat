@@ -1,3 +1,4 @@
+import logging
 import os
 from types import SimpleNamespace
 
@@ -166,22 +167,22 @@ def test_bilby_likelihood_reuses_cached_periodograms():
 
 
 @pytest.mark.parametrize(
-    "sftfilepattern, include_noise_log_likelihood, expected_warning",
+    "sftfilepattern, include_noise_log_likelihood",
     [
-        (None, None, "No file-backed SFT amplitudes are available"),
-        ("*.sft", False, "The absolute noise likelihood was disabled"),
+        (None, None),
+        ("*.sft", False),
     ],
 )
-def test_bilby_likelihood_warns_when_using_ratio(
+def test_bilby_likelihood_logs_normalization_choice(
     monkeypatch,
     caplog,
     sftfilepattern,
     include_noise_log_likelihood,
-    expected_warning,
 ):
     pytest.importorskip("bilby")
     from pyfstat.bilby_based_searches import PyFstatBilbyLikelihood
 
+    caplog.set_level(logging.INFO, logger="pyfstat.bilby_based_searches")
     pyfstat_search = SimpleNamespace(theta_keys=["F0"], sftfilepattern=sftfilepattern)
     likelihood = PyFstatBilbyLikelihood(
         pyfstat_search,
@@ -195,7 +196,9 @@ def test_bilby_likelihood_warns_when_using_ratio(
 
     assert likelihood.include_noise_log_likelihood is False
     assert likelihood.noise_log_likelihood() == 0.0
-    assert expected_warning in caplog.text
+    assert "does not affect posterior parameter estimation" in caplog.text
+    assert "include_noise_log_likelihood=False" in caplog.text
+    assert not any(record.levelno >= logging.WARNING for record in caplog.records)
 
 
 def test_bilby_absolute_likelihood_rejects_data_without_file_backed_sfts():
@@ -208,6 +211,40 @@ def test_bilby_absolute_likelihood_rejects_data_without_file_backed_sfts():
             pyfstat_search,
             include_noise_log_likelihood=True,
         )
+
+
+def test_bilby_bsgl_defaults_to_ratio(caplog):
+    pytest.importorskip("bilby")
+    from pyfstat.bilby_based_searches import PyFstatBilbyLikelihood
+
+    caplog.set_level(logging.INFO, logger="pyfstat.bilby_based_searches")
+    pyfstat_search = SimpleNamespace(
+        theta_keys=["F0"], sftfilepattern="*.sft", BSGL=True
+    )
+    likelihood = PyFstatBilbyLikelihood(pyfstat_search)
+
+    assert likelihood.include_noise_log_likelihood is False
+    assert likelihood.noise_log_likelihood() == 0.0
+    assert "composite Gaussian-or-line-noise denominator" in caplog.text
+    assert "does not affect posterior parameter estimation" in caplog.text
+    assert not any(record.levelno >= logging.WARNING for record in caplog.records)
+
+
+def test_bilby_bsgl_overrides_absolute_gaussian_noise_likelihood(caplog):
+    pytest.importorskip("bilby")
+    from pyfstat.bilby_based_searches import PyFstatBilbyLikelihood
+
+    pyfstat_search = SimpleNamespace(
+        theta_keys=["F0"], sftfilepattern="*.sft", BSGL=True
+    )
+    likelihood = PyFstatBilbyLikelihood(
+        pyfstat_search,
+        include_noise_log_likelihood=True,
+    )
+
+    assert likelihood.include_noise_log_likelihood is False
+    assert likelihood.noise_log_likelihood() == 0.0
+    assert "Ignoring include_noise_log_likelihood=True" in caplog.text
 
 
 def test_run_bilby_search_uses_separate_pickle_path(monkeypatch, tmp_path):

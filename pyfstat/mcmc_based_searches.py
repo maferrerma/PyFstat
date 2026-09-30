@@ -882,7 +882,11 @@ class MCMCSearch(BaseSearchClass):
             file-backed SFTs. If false, use the likelihood ratio with a zero
             noise baseline. The default uses the absolute likelihood for
             file-backed SFTs and the likelihood ratio for on-the-fly data,
-            where the SFT amplitudes cannot be reloaded from a file.
+            where the SFT amplitudes cannot be reloaded from a file. BSGL
+            searches always use the signal-versus-Gaussian-or-line-noise Bayes
+            factor directly and automatically set this option to false. The
+            normalization choice is logged, and explicitly requesting true
+            with BSGL emits a warning.
         save_pickle, export_samples, save_loudest: bool
             Reuse the corresponding PyFstat post-processing steps after Bilby
             returns posterior samples. Bilby samples are pickled separately at

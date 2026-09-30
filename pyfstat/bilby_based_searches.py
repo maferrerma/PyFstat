@@ -28,13 +28,26 @@ class PyFstatBilbyLikelihood(bilby.Likelihood):
     noise likelihood is added following the standalone Bilby pipeline. If it
     is false, the noise likelihood is defined as zero and Bilby samples the
     likelihood ratio directly. The default selects the absolute likelihood for
-    file-backed SFTs and the likelihood ratio for on-the-fly data.
+    file-backed SFTs, except for BSGL searches, and the likelihood ratio
+    otherwise. BSGL is a signal-versus-Gaussian-or-line-noise Bayes factor, so
+    adding a Gaussian-only noise likelihood would not produce a valid absolute
+    signal likelihood.
     """
 
     def __init__(self, pyfstat_search, include_noise_log_likelihood=None):
         self.pyfstat_search = pyfstat_search
         has_no_file_backed_sfts = pyfstat_search.sftfilepattern is None
-        if include_noise_log_likelihood is None:
+        uses_bsgl = getattr(pyfstat_search, "BSGL", False)
+        if uses_bsgl:
+            if include_noise_log_likelihood is True:
+                logger.warning(
+                    "Ignoring include_noise_log_likelihood=True because "
+                    "BSGL uses a signal-versus-Gaussian-or-line-noise Bayes "
+                    "factor, for which Gaussian-only normalization is "
+                    "inconsistent."
+                )
+            include_noise_log_likelihood = False
+        elif include_noise_log_likelihood is None:
             include_noise_log_likelihood = not has_no_file_backed_sfts
         elif include_noise_log_likelihood and has_no_file_backed_sfts:
             raise ValueError(
@@ -44,20 +57,18 @@ class PyFstatBilbyLikelihood(bilby.Likelihood):
                 "ratio."
             )
         self.include_noise_log_likelihood = include_noise_log_likelihood
-        if not include_noise_log_likelihood:
-            reason = (
-                "No file-backed SFT amplitudes are available, so the absolute "
-                "noise likelihood cannot be computed."
-                if has_no_file_backed_sfts
-                else "The absolute noise likelihood was disabled."
-            )
-            logger.warning(
-                "%s Using the likelihood ratio with a zero "
-                "noise-log-likelihood baseline. Bilby's log_evidence "
-                "therefore represents the signal-versus-noise log Bayes "
-                "factor, not an absolute signal evidence.",
-                reason,
-            )
+        logger.info(
+            "Bilby likelihood normalization: the Gaussian noise likelihood "
+            "is included by default for file-backed, non-BSGL searches so "
+            "Bilby can report absolute signal evidence and the corresponding "
+            "signal-versus-Gaussian-noise Bayes factor. It is disabled for "
+            "BSGL searches because BSGL already uses a composite "
+            "Gaussian-or-line-noise denominator, and for on-the-fly data "
+            "whose SFT amplitudes are unavailable. This parameter-independent "
+            "normalization does not affect posterior parameter estimation. "
+            "For this search, include_noise_log_likelihood=%s.",
+            include_noise_log_likelihood,
+        )
         self.bilby_parameter_names = get_bilby_parameter_names(
             pyfstat_search.theta_keys
         )
